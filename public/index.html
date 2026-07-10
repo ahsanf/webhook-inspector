@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhook Inspector</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0f1115; color: #e2e4e9; }
+  header { padding: 16px 20px; border-bottom: 1px solid #23262e; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; color: #8ab4ff; }
+  input, textarea, select, button { font-family: inherit; font-size: 13px; background: #1a1d24; color: #e2e4e9; border: 1px solid #2a2e38; border-radius: 6px; padding: 6px 8px; }
+  button { cursor: pointer; background: #2a2e38; }
+  button:hover { background: #343a46; }
+  button.primary { background: #3b5bdb; border-color: #3b5bdb; }
+  button.primary:hover { background: #4c6ef5; }
+  #url { flex: 1; min-width: 260px; font-family: monospace; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 0; height: calc(100vh - 61px); }
+  .col { overflow-y: auto; padding: 16px; }
+  .col.left { border-right: 1px solid #23262e; }
+  .req-item { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; cursor: pointer; border: 1px solid transparent; }
+  .req-item:hover { background: #1a1d24; }
+  .req-item.active { background: #1a1d24; border-color: #3b5bdb; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: #2a2e38; margin-right: 6px; }
+  .badge.GET { color: #74c0fc; } .badge.POST { color: #69db7c; } .badge.PUT { color: #ffd43b; }
+  .badge.DELETE { color: #ff8787; } .badge.PATCH { color: #da77f2; }
+  .req-time { font-size: 11px; color: #868e96; }
+  section { margin-bottom: 24px; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #868e96; margin: 0 0 10px; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  label { font-size: 12px; color: #adb5bd; display: block; margin-bottom: 3px; }
+  .field { flex: 1; min-width: 140px; }
+  textarea { width: 100%; resize: vertical; }
+  pre { background: #1a1d24; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .empty { color: #868e96; font-size: 13px; padding: 20px; text-align: center; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+  .tabs button { flex: 1; }
+  .tabs button.active { background: #3b5bdb; }
+  .tabpane { display: none; }
+  .tabpane.active { display: block; }
+  #templateSelect { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Webhook Inspector</h1>
+  <input id="url" readonly>
+  <button id="copyBtn">Copy</button>
+  <input id="idInput" placeholder="custom id / go to..." style="width:160px">
+  <button id="goBtn">Go</button>
+  <button id="newBtn">New random ID</button>
+</header>
+<main>
+  <div class="col left">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <h2 style="margin:0">Requests</h2>
+      <button id="clearBtn">Clear</button>
+    </div>
+    <div id="reqList"></div>
+  </div>
+  <div class="col right">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="detail">Request Detail</button>
+      <button class="tab-btn" data-tab="config">Response Config</button>
+      <button class="tab-btn" data-tab="templates">Templates</button>
+    </div>
+
+    <div class="tabpane active" id="tab-detail">
+      <div id="detail" class="empty">Send a request to your webhook URL, or select one from the list.</div>
+    </div>
+
+    <div class="tabpane" id="tab-config">
+      <section>
+        <h2>Response returned to callers</h2>
+        <div class="row">
+          <div class="field" style="max-width:120px">
+            <label>HTTP status</label>
+            <input id="cfgStatus" type="number" min="100" max="599" value="200">
+          </div>
+          <div class="field">
+            <label>Content-Type</label>
+            <input id="cfgContentType" value="application/json">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Extra headers (one "Key: Value" per line)</label>
+            <textarea id="cfgHeaders" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Body</label>
+            <textarea id="cfgBody" rows="8">{"status":"ok"}</textarea>
+          </div>
+        </div>
+        <div class="row">
+          <button class="primary" id="saveCfgBtn">Save for this ID</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Access token endpoint</h2>
+        <p style="color:#868e96;font-size:12px;margin-top:0">
+          Hitting this URL returns <code>{responseCode, responseMessage, accessToken, tokenType, expiresIn}</code>
+          using the token below. Id <code>simulator</code> is special-cased: it always
+          returns a fresh random token and ignores this field.
+        </p>
+        <div class="row">
+          <input id="accessTokenUrl" readonly style="flex:1;font-family:monospace">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Access token</label>
+            <input id="cfgAccessToken" placeholder="leave empty to return an empty token">
+          </div>
+          <button id="genTokenBtn" style="align-self:flex-end">Generate random</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="tabpane" id="tab-templates">
+      <section>
+        <h2>Reusable templates</h2>
+        <div class="row">
+          <select id="templateSelect"><option value="">-- select template --</option></select>
+          <button id="loadTemplateBtn">Load into config</button>
+          <button id="deleteTemplateBtn">Delete</button>
+        </div>
+        <div class="row">
+          <input id="templateName" placeholder="template name" style="flex:1">
+          <button class="primary" id="saveTemplateBtn">Save current config as template</button>
+        </div>
+        <p style="color:#868e96;font-size:12px">Loading a template only fills the Response Config form above — click "Save for this ID" there to apply it.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function randomId() {
+  const bytes = new Uint8Array(5);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function currentId() {
+  return decodeURIComponent(location.hash.replace(/^#/, ''));
+}
+
+function setId(id) {
+  location.hash = '#' + id;
+}
+
+function refreshUrl() {
+  const id = currentId();
+  $('url').value = location.origin + '/' + id;
+  $('accessTokenUrl').value = location.origin + '/' + id + '/access-token';
+  document.title = 'Webhook Inspector — ' + id;
+}
+
+function parseHeaders(text) {
+  const out = {};
+  text.split('\n').forEach(line => {
+    const i = line.indexOf(':');
+    if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  });
+  return out;
+}
+
+function formatHeaders(obj) {
+  return Object.entries(obj || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
+function fillConfigForm(cfg) {
+  $('cfgStatus').value = cfg.status || 200;
+  $('cfgContentType').value = cfg.contentType || 'application/json';
+  $('cfgHeaders').value = formatHeaders(cfg.headers);
+  $('cfgBody').value = cfg.body || '';
+  $('cfgAccessToken').value = cfg.accessToken || '';
+}
+
+function readConfigForm() {
+  return {
+    status: parseInt($('cfgStatus').value, 10) || 200,
+    contentType: $('cfgContentType').value,
+    headers: parseHeaders($('cfgHeaders').value),
+    body: $('cfgBody').value,
+    accessToken: $('cfgAccessToken').value,
+  };
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(64);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes));
+}
+
+async function loadConfig() {
+  const res = await fetch('/api/config?id=' + encodeURIComponent(currentId()));
+  fillConfigForm(await res.json());
+}
+
+async function saveConfig() {
+  await fetch('/api/config?id=' + encodeURIComponent(currentId()), {
+    method: 'POST',
+    body: JSON.stringify(readConfigForm()),
+  });
+  alert('Saved.');
+}
+
+let requests = [];
+let selectedIndex = -1;
+
+function renderDetail(req) {
+  if (!req) {
+    $('detail').className = 'empty';
+    $('detail').textContent = 'Select a request from the list.';
+    return;
+  }
+  $('detail').className = '';
+  $('detail').innerHTML = `
+    <div class="row"><span class="badge ${req.method}">${req.method}</span><span class="req-time">${req.timestamp} · ${req.remoteIp || ''}</span></div>
+    <h2>Query</h2><pre>${req.query ? escapeHtml(req.query) : '(none)'}</pre>
+    <h2>Headers</h2><pre>${escapeHtml(JSON.stringify(req.headers, null, 2))}</pre>
+    <h2>Body</h2><pre>${req.body ? escapeHtml(req.body) : '(empty)'}</pre>
+  `;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+function renderList() {
+  const list = $('reqList');
+  if (requests.length === 0) {
+    list.innerHTML = '<div class="empty">No requests captured yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  requests.forEach((req, i) => {
+    const div = document.createElement('div');
+    div.className = 'req-item' + (i === selectedIndex ? ' active' : '');
+    div.innerHTML = `<span class="badge ${req.method}">${req.method}</span><span class="req-time">${req.timestamp}</span>`;
+    div.onclick = () => { selectedIndex = i; renderList(); renderDetail(req); switchTab('detail'); };
+    list.appendChild(div);
+  });
+}
+
+async function pollRequests() {
+  try {
+    const res = await fetch('/api/requests?id=' + encodeURIComponent(currentId()));
+    requests = await res.json();
+    renderList();
+  } catch (e) { /* ignore transient errors */ }
+}
+
+async function clearRequests() {
+  await fetch('/api/requests?id=' + encodeURIComponent(currentId()), { method: 'DELETE' });
+  selectedIndex = -1;
+  renderDetail(null);
+  pollRequests();
+}
+
+async function loadTemplates() {
+  const res = await fetch('/api/templates');
+  const templates = await res.json();
+  const sel = $('templateSelect');
+  sel.innerHTML = '<option value="">-- select template --</option>';
+  Object.keys(templates).sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    opt.dataset.tpl = JSON.stringify(templates[name]);
+    sel.appendChild(opt);
+  });
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+$('copyBtn').onclick = () => { navigator.clipboard.writeText($('url').value); };
+$('newBtn').onclick = () => { setId(randomId()); };
+$('goBtn').onclick = () => { if ($('idInput').value.trim()) setId($('idInput').value.trim()); };
+$('clearBtn').onclick = clearRequests;
+$('saveCfgBtn').onclick = saveConfig;
+$('genTokenBtn').onclick = () => { $('cfgAccessToken').value = randomToken(); };
+
+$('saveTemplateBtn').onclick = async () => {
+  const name = $('templateName').value.trim();
+  if (!name) return alert('Enter a template name.');
+  await fetch('/api/templates', {
+    method: 'POST',
+    body: JSON.stringify({ name, ...readConfigForm() }),
+  });
+  $('templateName').value = '';
+  loadTemplates();
+};
+
+$('loadTemplateBtn').onclick = () => {
+  const opt = $('templateSelect').selectedOptions[0];
+  if (!opt || !opt.dataset.tpl) return;
+  fillConfigForm(JSON.parse(opt.dataset.tpl));
+  switchTab('config');
+};
+
+$('deleteTemplateBtn').onclick = async () => {
+  const name = $('templateSelect').value;
+  if (!name) return;
+  await fetch('/api/templates?name=' + encodeURIComponent(name), { method: 'DELETE' });
+  loadTemplates();
+};
+
+let pollTimer = null;
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollRequests();
+  pollTimer = setInterval(() => { if (!document.hidden) pollRequests(); }, 2000);
+}
+
+function boot() {
+  if (!currentId()) { setId(randomId()); return; }
+  refreshUrl();
+  selectedIndex = -1;
+  renderDetail(null);
+  loadConfig();
+  loadTemplates();
+  startPolling();
+}
+
+window.addEventListener('hashchange', boot);
+boot();
+</script>
+</body>
+</html>

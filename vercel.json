@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/:id/access-token", "destination": "/api/access-token?id=:id" },
+    { "source": "/:id", "destination": "/api/hook?id=:id" }
+  ]
+}
