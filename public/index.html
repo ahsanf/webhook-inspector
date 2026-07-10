@@ -67,6 +67,9 @@
     </div>
 
     <div class="tabpane active" id="tab-detail">
+      <div class="row" id="detailActions" style="display:none">
+        <button id="copyReqBtn">Copy request</button>
+      </div>
       <div id="detail" class="empty">Send a request to your webhook URL, or select one from the list.</div>
     </div>
 
@@ -97,6 +100,7 @@
         </div>
         <div class="row">
           <button class="primary" id="saveCfgBtn">Save for this ID</button>
+          <button id="copyResBtn">Copy response</button>
         </div>
       </section>
 
@@ -214,8 +218,11 @@ async function saveConfig() {
 
 let requests = [];
 let selectedIndex = -1;
+let selectedRequest = null;
 
 function renderDetail(req) {
+  selectedRequest = req;
+  $('detailActions').style.display = req ? '' : 'none';
   if (!req) {
     $('detail').className = 'empty';
     $('detail').textContent = 'Select a request from the list.';
@@ -292,6 +299,12 @@ $('goBtn').onclick = () => { if ($('idInput').value.trim()) setId($('idInput').v
 $('clearBtn').onclick = clearRequests;
 $('saveCfgBtn').onclick = saveConfig;
 $('genTokenBtn').onclick = () => { $('cfgAccessToken').value = randomToken(); };
+$('copyReqBtn').onclick = () => {
+  if (selectedRequest) navigator.clipboard.writeText(JSON.stringify(selectedRequest, null, 2));
+};
+$('copyResBtn').onclick = () => {
+  navigator.clipboard.writeText(JSON.stringify(readConfigForm(), null, 2));
+};
 
 $('saveTemplateBtn').onclick = async () => {
   const name = $('templateName').value.trim();
