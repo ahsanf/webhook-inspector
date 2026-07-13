@@ -11,6 +11,7 @@ interface Template {
   headers?: Record<string, string>;
   body?: string;
   accessToken?: string;
+  timeoutMs?: number;
 }
 
 const TEMPLATES_KEY = 'templates';

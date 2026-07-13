@@ -22,6 +22,7 @@ interface ResponseConfig {
   contentType?: string;
   headers?: Record<string, string>;
   body?: string;
+  timeoutMs?: number;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -59,6 +60,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       // ignore malformed stored config, fall back to default
     }
+  }
+
+  if (cfg.timeoutMs && cfg.timeoutMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, cfg.timeoutMs));
   }
 
   for (const [k, v] of Object.entries(cfg.headers || {})) res.setHeader(k, v);

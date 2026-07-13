@@ -33,6 +33,7 @@
   .field { flex: 1; min-width: 140px; }
   textarea { width: 100%; resize: vertical; }
   pre { background: #1a1d24; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .jkey { color: #8ab4ff; } .jstr { color: #69db7c; } .jnum { color: #ffa94d; } .jbool { color: #da77f2; } .jnull { color: #868e96; }
   .empty { color: #868e96; font-size: 13px; padding: 20px; text-align: center; }
   .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
   .tabs button { flex: 1; }
@@ -99,6 +100,12 @@
           </div>
         </div>
         <div class="row">
+          <div class="field" style="max-width:200px">
+            <label>Timeout before responding (ms)</label>
+            <input id="cfgTimeout" type="number" min="0" placeholder="0 = no delay">
+          </div>
+        </div>
+        <div class="row">
           <button class="primary" id="saveCfgBtn">Save for this ID</button>
           <button id="copyResBtn">Copy response</button>
         </div>
@@ -109,7 +116,7 @@
         <p style="color:#868e96;font-size:12px;margin-top:0">
           Hitting this URL returns <code>{responseCode, responseMessage, accessToken, tokenType, expiresIn}</code>
           using the token below. Id <code>simulator</code> is special-cased: it always
-          returns a fresh random token and ignores this field.
+          returns a fresh random full token response and ignores this field.
         </p>
         <div class="row">
           <input id="accessTokenUrl" readonly style="flex:1;font-family:monospace">
@@ -185,6 +192,7 @@ function fillConfigForm(cfg) {
   $('cfgHeaders').value = formatHeaders(cfg.headers);
   $('cfgBody').value = cfg.body || '';
   $('cfgAccessToken').value = cfg.accessToken || '';
+  $('cfgTimeout').value = cfg.timeoutMs || '';
 }
 
 function readConfigForm() {
@@ -194,7 +202,61 @@ function readConfigForm() {
     headers: parseHeaders($('cfgHeaders').value),
     body: $('cfgBody').value,
     accessToken: $('cfgAccessToken').value,
+    timeoutMs: parseInt($('cfgTimeout').value, 10) || 0,
   };
+}
+
+// fetch() only sends a JSON content-type if we ask for it; without it Vercel's
+// body parser leaves req.body unparsed and POSTs get rejected as "invalid".
+function postJSON(url, data) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+function formatTimestamp(iso) {
+  return new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Jakarta', hour12: false }).replace(',', '') + ' WIB';
+}
+
+function prettyBody(body) {
+  if (!body) return '(empty)';
+  try {
+    return JSON.stringify(JSON.parse(body), null, 2);
+  } catch {
+    return body;
+  }
+}
+
+// Classic regex-based JSON highlighter: run on already-escaped text so it
+// only ever wraps JSON tokens (quotes/braces survive escapeHtml untouched).
+function highlightJson(escaped) {
+  return escaped.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    (match) => {
+      let cls = 'jnum';
+      if (/^"/.test(match)) cls = /:$/.test(match) ? 'jkey' : 'jstr';
+      else if (/true|false/.test(match)) cls = 'jbool';
+      else if (/null/.test(match)) cls = 'jnull';
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+}
+
+function renderJsonPre(raw) {
+  return highlightJson(escapeHtml(raw));
+}
+
+function bodyDisplayHtml(body) {
+  const pretty = prettyBody(body);
+  if (pretty === '(empty)') return pretty;
+  try {
+    JSON.parse(body);
+    return renderJsonPre(pretty);
+  } catch {
+    return escapeHtml(pretty);
+  }
 }
 
 function randomToken() {
@@ -209,10 +271,7 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-  await fetch('/api/config?id=' + encodeURIComponent(currentId()), {
-    method: 'POST',
-    body: JSON.stringify(readConfigForm()),
-  });
+  await postJSON('/api/config?id=' + encodeURIComponent(currentId()), readConfigForm());
   alert('Saved.');
 }
 
@@ -230,11 +289,15 @@ function renderDetail(req) {
   }
   $('detail').className = '';
   $('detail').innerHTML = `
-    <div class="row"><span class="badge ${req.method}">${req.method}</span><span class="req-time">${req.timestamp} · ${req.remoteIp || ''}</span></div>
+    <div class="row"><span class="badge ${req.method}">${req.method}</span><span class="req-time">${formatTimestamp(req.timestamp)} · ${req.remoteIp || ''}</span></div>
     <h2>Query</h2><pre>${req.query ? escapeHtml(req.query) : '(none)'}</pre>
-    <h2>Headers</h2><pre>${escapeHtml(JSON.stringify(req.headers, null, 2))}</pre>
-    <h2>Body</h2><pre>${req.body ? escapeHtml(req.body) : '(empty)'}</pre>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px"><h2 style="margin:0">Headers</h2><button id="copyHeadersBtn">Copy</button></div>
+    <pre>${renderJsonPre(JSON.stringify(req.headers, null, 2))}</pre>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px"><h2 style="margin:0">Body</h2><button id="copyBodyBtn">Copy</button></div>
+    <pre>${bodyDisplayHtml(req.body)}</pre>
   `;
+  $('copyHeadersBtn').onclick = () => navigator.clipboard.writeText(JSON.stringify(req.headers, null, 2));
+  $('copyBodyBtn').onclick = () => navigator.clipboard.writeText(prettyBody(req.body));
 }
 
 function escapeHtml(s) {
@@ -251,7 +314,7 @@ function renderList() {
   requests.forEach((req, i) => {
     const div = document.createElement('div');
     div.className = 'req-item' + (i === selectedIndex ? ' active' : '');
-    div.innerHTML = `<span class="badge ${req.method}">${req.method}</span><span class="req-time">${req.timestamp}</span>`;
+    div.innerHTML = `<span class="badge ${req.method}">${req.method}</span><span class="req-time">${formatTimestamp(req.timestamp)}</span>`;
     div.onclick = () => { selectedIndex = i; renderList(); renderDetail(req); switchTab('detail'); };
     list.appendChild(div);
   });
@@ -309,10 +372,8 @@ $('copyResBtn').onclick = () => {
 $('saveTemplateBtn').onclick = async () => {
   const name = $('templateName').value.trim();
   if (!name) return alert('Enter a template name.');
-  await fetch('/api/templates', {
-    method: 'POST',
-    body: JSON.stringify({ name, ...readConfigForm() }),
-  });
+  const res = await postJSON('/api/templates', { name, ...readConfigForm() });
+  if (!res.ok) return alert('Failed to save template: ' + (await res.text()));
   $('templateName').value = '';
   loadTemplates();
 };

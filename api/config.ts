@@ -11,6 +11,8 @@ interface ResponseConfig {
   // Returned instead of the fields above when the request body is JSON
   // {"grantType":"client_credentials"} (see api/hook.ts).
   accessToken?: string;
+  // Milliseconds to wait before responding, to simulate a slow/timed-out upstream.
+  timeoutMs?: number;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
