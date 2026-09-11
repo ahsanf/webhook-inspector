@@ -289,6 +289,7 @@ let selectedRequest = null;
 let page = 1;
 let pageSize = 20;
 let total = 0;
+let allTotal = 0;
 let searchQuery = '';
 
 function renderDetail(req) {
@@ -318,7 +319,7 @@ function escapeHtml(s) {
 
 function renderList() {
   const list = $('reqList');
-  $('reqCount').textContent = total;
+  $('reqCount').textContent = searchQuery ? `${total} / ${allTotal}` : total;
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
   $('pageInfo').textContent = `page ${page} / ${totalPages}`;
   $('pagePrevBtn').disabled = page <= 1;
@@ -345,6 +346,7 @@ async function pollRequests() {
     const data = await res.json();
     requests = data.items;
     total = data.total;
+    allTotal = data.allTotal;
     renderList();
   } catch (e) { /* ignore transient errors */ }
 }
