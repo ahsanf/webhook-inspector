@@ -49,7 +49,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const key = `req:${id}`;
   await redis('RPUSH', key, JSON.stringify(captured));
-  await redis('LTRIM', key, '-100', '-1');
+  // ponytail: cap at 2000/day (list expires at midnight anyway) instead of unbounded storage; raise if that's ever hit
+  await redis('LTRIM', key, '-2000', '-1');
   await redis('EXPIRE', key, secondsUntilMidnightUTC());
 
   let cfg: ResponseConfig = { status: 200, contentType: 'application/json', body: '{"status":"ok"}' };
